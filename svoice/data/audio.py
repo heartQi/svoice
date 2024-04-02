@@ -14,7 +14,7 @@ import sys
 
 import torchaudio
 import soundfile as sf
-import torch as th
+import torch
 from torch.nn import functional as F
 
 
@@ -37,8 +37,7 @@ def find_audio_files(path, exts=[".wav"], progress=True):
     meta.sort()
     return meta
 
-
-class Audioset:
+class Audioset(torch.utils.data.Dataset):
     def __init__(self, files, length=None, stride=None, pad=True, augment=None):
         """
         files should be a list [(file, length)]
@@ -73,14 +72,20 @@ class Audioset:
             if self.length is not None:
                 offset = self.stride * index
                 num_frames = self.length
-            #  out = th.Tensor(sf.read(str(file), start=offset, frames=num_frames)[0]).unsqueeze(0)
-            out = torchaudio.load(str(file), offset=offset,
-                                  num_frames=num_frames)[0]
-            if self.augment:
-                out = self.augment(out.squeeze(0).numpy()).unsqueeze(0)
+            # Load audio data
+            audio_data, sample_rate = torchaudio.load(str(file))
             if num_frames:
-                out = F.pad(out, (0, num_frames - out.shape[-1]))
-            return out[0]
+                # Ensure the audio data is at least as long as specified
+                if audio_data.size(1) < num_frames:
+                    # If the audio is shorter than expected, pad it
+                    audio_data = F.pad(audio_data, (0, num_frames - audio_data.size(1)))
+                else:
+                    # If the audio is longer, truncate it
+                    audio_data = audio_data[:, :num_frames]
+            # Apply augmentation if specified
+            if self.augment:
+                audio_data = self.augment(audio_data.squeeze(0).numpy()).unsqueeze(0)
+            return audio_data[0]
 
 
 if __name__ == "__main__":

@@ -37,11 +37,13 @@ class Solver(object):
         self.dmodel = distrib.wrap(model)
         self.optimizer = optimizer
         if args.lr_sched == 'step':
-            self.sched = StepLR(
-                self.optimizer, step_size=args.step.step_size, gamma=args.step.gamma)
+            step_size = args.step.step_size
+            gamma = args.step.gamma
+            self.sched = StepLR(self.optimizer, step_size=step_size, gamma=gamma)
         elif args.lr_sched == 'plateau':
-            self.sched = ReduceLROnPlateau(
-                self.optimizer, factor=args.plateau.factor, patience=args.plateau.patience)
+            factor = args.plateau.factor
+            patience = args.plateau.patience
+            self.sched = ReduceLROnPlateau(self.optimizer, factor=factor, patience=patience)
         else:
             self.sched = None
 

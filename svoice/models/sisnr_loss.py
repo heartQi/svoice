@@ -40,34 +40,30 @@ def cal_si_snr_with_pit(source, estimate_source, source_lengths):
     B, C, T = source.size()
     # mask padding position along T
     mask = get_mask(source, source_lengths)
-    estimate_source *= mask
+    estimate_source = estimate_source * mask  # Use out-of-place operation
 
     # Step 1. Zero-mean norm
     num_samples = source_lengths.view(-1, 1, 1).float()  # [B, 1, 1]
     mean_target = torch.sum(source, dim=2, keepdim=True) / num_samples
-    mean_estimate = torch.sum(estimate_source, dim=2,
-                              keepdim=True) / num_samples
+    mean_estimate = torch.sum(estimate_source, dim=2, keepdim=True) / num_samples
     zero_mean_target = source - mean_target
     zero_mean_estimate = estimate_source - mean_estimate
     # mask padding position along T
-    zero_mean_target *= mask
-    zero_mean_estimate *= mask
+    zero_mean_target = zero_mean_target * mask  # Use out-of-place operation
+    zero_mean_estimate = zero_mean_estimate * mask  # Use out-of-place operation
 
     # Step 2. SI-SNR with PIT
     # reshape to use broadcast
     s_target = torch.unsqueeze(zero_mean_target, dim=1)  # [B, 1, C, T]
     s_estimate = torch.unsqueeze(zero_mean_estimate, dim=2)  # [B, C, 1, T]
     # s_target = <s', s>s / ||s||^2
-    pair_wise_dot = torch.sum(s_estimate * s_target,
-                              dim=3, keepdim=True)  # [B, C, C, 1]
-    s_target_energy = torch.sum(
-        s_target ** 2, dim=3, keepdim=True) + EPS  # [B, 1, C, 1]
+    pair_wise_dot = torch.sum(s_estimate * s_target, dim=3, keepdim=True)  # [B, C, C, 1]
+    s_target_energy = torch.sum(s_target ** 2, dim=3, keepdim=True) + EPS  # [B, 1, C, 1]
     pair_wise_proj = pair_wise_dot * s_target / s_target_energy  # [B, C, C, T]
     # e_noise = s' - s_target
     e_noise = s_estimate - pair_wise_proj  # [B, C, C, T]
     # SI-SNR = 10 * log_10(||s_target||^2 / ||e_noise||^2)
-    pair_wise_si_snr = torch.sum(
-        pair_wise_proj ** 2, dim=3) / (torch.sum(e_noise ** 2, dim=3) + EPS)
+    pair_wise_si_snr = torch.sum(pair_wise_proj ** 2, dim=3) / (torch.sum(e_noise ** 2, dim=3) + EPS)
     pair_wise_si_snr = 10 * torch.log10(pair_wise_si_snr + EPS)  # [B, C, C]
     pair_wise_si_snr = torch.transpose(pair_wise_si_snr, 1, 2)
 
@@ -80,7 +76,6 @@ def cal_si_snr_with_pit(source, estimate_source, source_lengths):
     # [B, C!] <- [B, C, C] einsum [C!, C, C], SI-SNR sum of each permutation
     snr_set = torch.einsum('bij,pij->bp', [pair_wise_si_snr, perms_one_hot])
     max_snr_idx = torch.argmax(snr_set, dim=1)  # [B]
-    #  max_snr = torch.gather(snr_set, 1, max_snr_idx.view(-1, 1))  # [B, 1]
     max_snr, _ = torch.max(snr_set, dim=1, keepdim=True)
     max_snr /= C
     return max_snr, perms, max_snr_idx, snr_set / C
